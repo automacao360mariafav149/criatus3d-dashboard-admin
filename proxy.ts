@@ -13,50 +13,60 @@ function unauthorizedResponse() {
 }
 
 function decodeBasicAuth(value: string): string {
-  if (typeof atob === "function") {
-    return atob(value);
-  }
+  try {
+    if (typeof atob === "function") {
+      return atob(value);
+    }
 
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(value, "base64").toString("utf-8");
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(value, "base64").toString("utf-8");
+    }
+  } catch {
+    return "";
   }
 
   return "";
 }
 
 export function proxy(request: NextRequest) {
-  const isDashboardPath =
-    request.nextUrl.pathname.startsWith("/dashboard") ||
-    request.nextUrl.pathname.startsWith("/api");
+  try {
+    const isDashboardPath =
+      request.nextUrl.pathname.startsWith("/dashboard") ||
+      request.nextUrl.pathname.startsWith("/api") ||
+      request.nextUrl.pathname.startsWith("/dashbordadmin/dashboard") ||
+      request.nextUrl.pathname.startsWith("/dashbordadmin/api");
 
-  if (!isDashboardPath) {
+    if (!isDashboardPath) {
+      return NextResponse.next();
+    }
+
+    if (!AUTH_USER || !AUTH_PASS) {
+      return NextResponse.next();
+    }
+
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader?.startsWith("Basic ")) {
+      return unauthorizedResponse();
+    }
+
+    const encodedPart = authHeader.split(" ")[1];
+    const decoded = decodeBasicAuth(encodedPart);
+    const separatorIndex = decoded.indexOf(":");
+    if (separatorIndex < 0) {
+      return unauthorizedResponse();
+    }
+
+    const username = decoded.slice(0, separatorIndex);
+    const password = decoded.slice(separatorIndex + 1);
+
+    if (username !== AUTH_USER || password !== AUTH_PASS) {
+      return unauthorizedResponse();
+    }
+
     return NextResponse.next();
-  }
-
-  if (!AUTH_USER || !AUTH_PASS) {
-    return NextResponse.next();
-  }
-
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Basic ")) {
+  } catch {
     return unauthorizedResponse();
   }
-
-  const encodedPart = authHeader.split(" ")[1];
-  const decoded = decodeBasicAuth(encodedPart);
-  const separatorIndex = decoded.indexOf(":");
-  if (separatorIndex < 0) {
-    return unauthorizedResponse();
-  }
-
-  const username = decoded.slice(0, separatorIndex);
-  const password = decoded.slice(separatorIndex + 1);
-
-  if (username !== AUTH_USER || password !== AUTH_PASS) {
-    return unauthorizedResponse();
-  }
-
-  return NextResponse.next();
 }
 
 export const config = {
