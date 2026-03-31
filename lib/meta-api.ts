@@ -55,12 +55,12 @@ function getRequiredEnv(name: string): string {
 async function metaFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getRequiredEnv("INSTAGRAM_TOKEN");
   const url = new URL(`${META_GRAPH_BASE_URL}${path}`);
-  url.searchParams.set("access_token", token);
 
   const response = await fetch(url.toString(), {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
