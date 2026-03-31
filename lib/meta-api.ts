@@ -101,18 +101,17 @@ function getFirstMetricValueMap(items: JsonObject[], metricName: string): Record
 }
 
 export async function getInstagramOverview(): Promise<InstagramOverview> {
-  const igAccountId = getRequiredEnv("INSTAGRAM_ACCOUNT_ID");
   const sinceLastWeek = getDateDaysAgo(7);
   const since30Days = getDateDaysAgo(30);
   const untilToday = new Date().toISOString().split("T")[0];
 
   const [profileData, metricsData, audienceData] = await Promise.all([
-    metaFetch<JsonObject>(`/${igAccountId}?fields=followers_count`),
+    metaFetch<JsonObject>(`/me?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/${igAccountId}/insights?metric=reach,impressions,follower_count&period=day&since=${since30Days}&until=${untilToday}`,
+      `/me/insights?metric=reach,impressions,follower_count&period=day&since=${since30Days}&until=${untilToday}`,
     ),
     metaFetch<JsonObject>(
-      `/${igAccountId}/insights?metric=audience_city,audience_gender_age,audience_online_followers&period=lifetime`,
+      `/me/insights?metric=audience_city,audience_gender_age,audience_online_followers&period=lifetime`,
     ),
   ]);
 
@@ -193,9 +192,8 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
 }
 
 export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
-  const igAccountId = getRequiredEnv("INSTAGRAM_ACCOUNT_ID");
   const postsData = await metaFetch<JsonObject>(
-    `/${igAccountId}/media?fields=id,caption,media_url,permalink,timestamp,like_count,comments_count&limit=30`,
+    `/me/media?fields=id,caption,media_url,permalink,timestamp,like_count,comments_count&limit=30`,
   );
 
   const posts = normalizeArray<JsonObject>(postsData.data).map((post) => {
