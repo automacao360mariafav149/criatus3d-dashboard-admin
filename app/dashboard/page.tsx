@@ -85,8 +85,12 @@ export default function DashboardPage() {
             <MetricCard title="Visualizacoes 30 dias" value={formatNumber(overview.views30d)} />
             <MetricCard title="Interacoes 30 dias" value={formatNumber(overview.totalInteractions30d)} />
             <MetricCard
-              title="Melhores horarios"
-              value={overview.bestPostingHours.join(" | ") || "Sem dados"}
+              title="Visitas ao perfil 30 dias"
+              value={overview.profileViews30d > 0 ? formatNumber(overview.profileViews30d) : "Sem dados"}
+            />
+            <MetricCard
+              title="Cliques no link 30 dias"
+              value={overview.websiteClicks30d > 0 ? formatNumber(overview.websiteClicks30d) : "Sem dados"}
             />
           </section>
 

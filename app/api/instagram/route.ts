@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { getInstagramOverview, getTopInstagramPosts } from "@/lib/meta-api";
+import { getInstagramOverview, getInstagramMedia, getInstagramStories } from "@/lib/meta-api";
 
 export async function GET() {
   try {
-    const [overview, topPosts] = await Promise.all([
+    const [overview, topPosts, stories] = await Promise.all([
       getInstagramOverview(),
-      getTopInstagramPosts(),
+      getInstagramMedia(),
+      getInstagramStories(),
     ]);
 
-    return NextResponse.json({ overview, topPosts });
+    return NextResponse.json({ overview, topPosts, stories });
   } catch (error) {
     const message =
       error instanceof Error

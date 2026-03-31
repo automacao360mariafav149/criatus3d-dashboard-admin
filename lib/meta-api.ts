@@ -12,6 +12,14 @@ export interface InstagramOverview {
   impressions30d: number;
   views30d: number;
   totalInteractions30d: number;
+  websiteClicks30d: number;
+  profileViews30d: number;
+  accountsEngaged30d: number;
+  likes30d: number;
+  comments30d: number;
+  shares30d: number;
+  saves30d: number;
+  followsAndUnfollows30d: number;
   bestPostingHours: string[];
   demographics: {
     cityFocus: Array<{ city: string; audience: number }>;
@@ -30,6 +38,20 @@ export interface InstagramPost {
   likes: number;
   comments: number;
   engagementRate: number;
+}
+
+export interface InstagramMediaItem extends InstagramPost {
+  mediaType: string;
+  saves: number;
+  shares: number;
+}
+
+export interface InstagramStory {
+  id: string;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  timestamp: string;
+  mediaType: string;
 }
 
 export interface AdsCampaign {
@@ -104,17 +126,60 @@ function getFirstMetricValueMap(items: JsonObject[], metricName: string): Record
   return first.value as Record<string, number>;
 }
 
+function sumMetricValues(metricItems: JsonObject[], metricName: string): number {
+  return normalizeArray<JsonObject>(
+    metricItems.find((item) => item.name === metricName)?.values,
+  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
+}
+
+function parseDemographicsBreakdown(
+  data: JsonObject[],
+  metricName: string,
+  dimensionKey: string,
+): Array<{ key: string; value: number }> {
+  const metric = data.find((item) => item.name === metricName);
+  if (!metric) return [];
+
+  const totalValue = metric.total_value as JsonObject | undefined;
+  if (!totalValue) return [];
+
+  const breakdowns = normalizeArray<JsonObject>(totalValue.breakdowns);
+  const breakdown = breakdowns.find((b) => {
+    const keys = normalizeArray<string>(b.dimension_keys);
+    return keys.includes(dimensionKey);
+  });
+  if (!breakdown) return [];
+
+  const results = normalizeArray<JsonObject>(breakdown.results);
+  return results.map((r) => {
+    const dimValues = normalizeArray<string>(r.dimension_values);
+    return {
+      key: dimValues[0] ?? "Desconhecido",
+      value: Number(r.value ?? 0),
+    };
+  });
+}
+
 export async function getInstagramOverview(): Promise<InstagramOverview> {
   const sinceLastWeek = getDateDaysAgo(7);
   const since30Days = getDateDaysAgo(30);
   const untilToday = new Date().toISOString().split("T")[0];
 
-  const [profileData, metricsData, onlineData] = await Promise.all([
+  const metricsParam =
+    "reach,follower_count,views,total_interactions,likes,comments,shares,saves,website_clicks,profile_views,accounts_engaged,follows_and_unfollows";
+
+  const [profileData, metricsData, onlineData, demoCityData, demoAgeGenderData] = await Promise.all([
     metaFetch<JsonObject>(`/me?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=reach,follower_count,views,total_interactions&period=day&since=${since30Days}&until=${untilToday}`,
+      `/me/insights?metric=${metricsParam}&period=day&since=${since30Days}&until=${untilToday}`,
     ),
     metaFetch<JsonObject>(`/me/insights?metric=online_followers&period=lifetime`),
+    metaFetch<JsonObject>(
+      `/me/insights?metric=follower_demographics&period=lifetime&breakdown=city`,
+    ).catch(() => ({ data: [] } as JsonObject)),
+    metaFetch<JsonObject>(
+      `/me/insights?metric=follower_demographics&period=lifetime&breakdown=age,gender`,
+    ).catch(() => ({ data: [] } as JsonObject)),
   ]);
 
   const followers = Number(profileData.followers_count ?? 0);
@@ -133,17 +198,17 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
 
   const followersWeeklyDelta = followers - weekAgoFollowers;
 
-  const reach30d = normalizeArray<JsonObject>(
-    metricItems.find((item) => item.name === "reach")?.values,
-  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
-
-  const views30d = normalizeArray<JsonObject>(
-    metricItems.find((item) => item.name === "views")?.values,
-  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
-
-  const totalInteractions30d = normalizeArray<JsonObject>(
-    metricItems.find((item) => item.name === "total_interactions")?.values,
-  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
+  const reach30d = sumMetricValues(metricItems, "reach");
+  const views30d = sumMetricValues(metricItems, "views");
+  const totalInteractions30d = sumMetricValues(metricItems, "total_interactions");
+  const likes30d = sumMetricValues(metricItems, "likes");
+  const comments30d = sumMetricValues(metricItems, "comments");
+  const shares30d = sumMetricValues(metricItems, "shares");
+  const saves30d = sumMetricValues(metricItems, "saves");
+  const websiteClicks30d = sumMetricValues(metricItems, "website_clicks");
+  const profileViews30d = sumMetricValues(metricItems, "profile_views");
+  const accountsEngaged30d = sumMetricValues(metricItems, "accounts_engaged");
+  const followsAndUnfollows30d = sumMetricValues(metricItems, "follows_and_unfollows");
 
   const onlineItems = normalizeArray<JsonObject>(onlineData.data);
   const onlineFollowersMap = getFirstMetricValueMap(onlineItems, "online_followers");
@@ -153,6 +218,25 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     .slice(0, 4)
     .map(([hour]) => `${hour}:00`);
 
+  // Parse city demographics
+  const cityItems = normalizeArray<JsonObject>((demoCityData as JsonObject).data);
+  const cityRaw = parseDemographicsBreakdown(cityItems, "follower_demographics", "city");
+  const cityFocus = cityRaw
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map((item) => ({ city: item.key, audience: item.value }));
+
+  // Parse age/gender demographics
+  const ageGenderItems = normalizeArray<JsonObject>((demoAgeGenderData as JsonObject).data);
+  const ageRaw = parseDemographicsBreakdown(ageGenderItems, "follower_demographics", "age");
+  const genderRaw = parseDemographicsBreakdown(ageGenderItems, "follower_demographics", "gender");
+
+  const ageRanges = ageRaw
+    .sort((a, b) => b.value - a.value)
+    .map((item) => ({ range: item.key, audience: item.value }));
+
+  const genders = genderRaw.map((item) => ({ gender: item.key, audience: item.value }));
+
   return {
     followers,
     followersWeeklyDelta,
@@ -160,18 +244,26 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     impressions30d: 0,
     views30d,
     totalInteractions30d,
+    websiteClicks30d,
+    profileViews30d,
+    accountsEngaged30d,
+    likes30d,
+    comments30d,
+    shares30d,
+    saves30d,
+    followsAndUnfollows30d,
     bestPostingHours,
     demographics: {
-      cityFocus: [],
-      ageRanges: [],
-      genders: [],
+      cityFocus,
+      ageRanges,
+      genders,
     },
   };
 }
 
-export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
+export async function getInstagramMedia(): Promise<InstagramMediaItem[]> {
   const postsData = await metaFetch<JsonObject>(
-    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit=30`,
+    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type&limit=30`,
   );
 
   const posts = normalizeArray<JsonObject>(postsData.data).map((post) => {
@@ -190,12 +282,35 @@ export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
       likes,
       comments,
       engagementRate,
+      mediaType: String(post.media_type ?? "IMAGE"),
+      saves: 0,
+      shares: 0,
     };
   });
 
-  return posts
-    .sort((a, b) => b.engagementRate - a.engagementRate)
-    .slice(0, 6);
+  return posts.sort((a, b) => b.engagementRate - a.engagementRate);
+}
+
+// Keep old name as alias for backward compatibility
+export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
+  return getInstagramMedia();
+}
+
+export async function getInstagramStories(): Promise<InstagramStory[]> {
+  try {
+    const storiesData = await metaFetch<JsonObject>(
+      `/me/stories?fields=id,media_url,thumbnail_url,timestamp,media_type`,
+    );
+    return normalizeArray<JsonObject>(storiesData.data).map((story) => ({
+      id: String(story.id ?? ""),
+      mediaUrl: story.media_url ? String(story.media_url) : null,
+      thumbnailUrl: story.thumbnail_url ? String(story.thumbnail_url) : null,
+      timestamp: String(story.timestamp ?? ""),
+      mediaType: String(story.media_type ?? "IMAGE"),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export async function listAdsCampaigns(): Promise<AdsCampaign[]> {
