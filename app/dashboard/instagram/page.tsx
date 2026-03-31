@@ -29,6 +29,12 @@ function formatDate(timestamp: string) {
 
 type TabKey = "feed" | "reels" | "stories";
 
+const PERIOD_OPTIONS: { label: string; value: number }[] = [
+  { label: "7 dias", value: 7 },
+  { label: "14 dias", value: 14 },
+  { label: "30 dias", value: 30 },
+];
+
 export default function InstagramPage() {
   const [overview, setOverview] = useState<InstagramOverview | null>(null);
   const [media, setMedia] = useState<InstagramMediaItem[]>([]);
@@ -36,12 +42,13 @@ export default function InstagramPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("feed");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [days, setDays] = useState(30);
 
-  const loadInstagram = useCallback(async () => {
+  const loadInstagram = useCallback(async (period: number) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${BASE_PATH}/api/instagram`, { cache: "no-store" });
+      const response = await fetch(`${BASE_PATH}/api/instagram?days=${period}`, { cache: "no-store" });
       const data = (await response.json()) as InstagramApiResponse;
       if (!response.ok || !data.overview) {
         throw new Error(data.error ?? "Nao foi possivel carregar a analise do Instagram.");
@@ -57,8 +64,8 @@ export default function InstagramPage() {
   }, []);
 
   useEffect(() => {
-    void loadInstagram();
-  }, [loadInstagram]);
+    void loadInstagram(days);
+  }, [loadInstagram, days]);
 
   const feedPosts = media.filter(
     (p) => p.mediaType === "IMAGE" || p.mediaType === "CAROUSEL_ALBUM",
@@ -78,12 +85,26 @@ export default function InstagramPage() {
           <p className="text-xs uppercase tracking-widest text-muted">Analise detalhada</p>
           <h1 className="text-2xl font-bold text-white">Instagram @criatus3d</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setDays(opt.value)}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                days === opt.value
+                  ? "border-accent bg-accent text-white"
+                  : "border-white/20 text-muted hover:text-white"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
           <Link href="/dashboard" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white">
             Voltar
           </Link>
           <button
-            onClick={() => void loadInstagram()}
+            onClick={() => void loadInstagram(days)}
             className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-soft"
             type="button"
           >
@@ -104,25 +125,11 @@ export default function InstagramPage() {
               value={formatNumber(overview.followers)}
               subtitle={`Variacao semanal: ${overview.followersWeeklyDelta >= 0 ? "+" : ""}${formatNumber(overview.followersWeeklyDelta)}`}
             />
-            <MetricCard title="Alcance 30d" value={formatNumber(overview.reach30d)} />
-            <MetricCard title="Visualizacoes 30d" value={formatNumber(overview.views30d)} />
-            <MetricCard title="Contas engajadas 30d" value={formatNumber(overview.accountsEngaged30d)} />
-            <MetricCard title="Interacoes totais 30d" value={formatNumber(overview.totalInteractions30d)} />
-            <MetricCard title="Curtidas 30d" value={formatNumber(overview.likes30d)} />
-            <MetricCard title="Comentarios 30d" value={formatNumber(overview.comments30d)} />
-            <MetricCard title="Compartilhamentos 30d" value={formatNumber(overview.shares30d)} />
-            <MetricCard title="Salvamentos 30d" value={formatNumber(overview.saves30d)} />
-            <MetricCard title="Visitas ao perfil 30d" value={formatNumber(overview.profileViews30d)} />
-            <MetricCard
-              title="Cliques no link 30d"
-              value={overview.websiteClicks30d > 0 ? formatNumber(overview.websiteClicks30d) : "Sem dados"}
-            />
-            <MetricCard
-              title="Seguidores ganhos/perdidos 30d"
-              value={overview.followsAndUnfollows30d >= 0
-                ? `+${formatNumber(overview.followsAndUnfollows30d)}`
-                : formatNumber(overview.followsAndUnfollows30d)}
-            />
+            <MetricCard title={`Alcance ${days}d`} value={formatNumber(overview.reach30d)} />
+            <MetricCard title={`Visualizacoes Reels ${days}d`} value={formatNumber(overview.views30d)} />
+            <MetricCard title={`Curtidas ${days}d`} value={formatNumber(overview.likes30d)} />
+            <MetricCard title={`Comentarios ${days}d`} value={formatNumber(overview.comments30d)} />
+            <MetricCard title={`Total Interacoes ${days}d`} value={formatNumber(overview.totalInteractions30d)} />
           </section>
 
           {/* Tabs: Feed / Reels / Stories */}
@@ -222,7 +229,7 @@ export default function InstagramPage() {
                         <p className="mb-1 text-xs text-muted">{formatDate(post.timestamp)}</p>
                         <p className="line-clamp-2 text-sm text-white">{post.caption}</p>
                         <p className="mt-2 text-xs text-muted">
-                          {post.likes} curtidas &middot; {post.comments} coments
+                          {formatNumber(post.plays)} visualizacoes &middot; {post.likes} curtidas &middot; {post.comments} coments
                         </p>
                       </div>
                     </a>
@@ -234,7 +241,7 @@ export default function InstagramPage() {
             {/* Stories */}
             {activeTab === "stories" ? (
               stories.length === 0 ? (
-                <p className="text-sm text-muted">Nenhum story ativo no momento.</p>
+                <p className="text-sm text-muted">Stories expiram em 24h — nenhum ativo no momento.</p>
               ) : (
                 <div className="grid gap-3 grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
                   {stories.map((story) => (

@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { getInstagramOverview, getInstagramMedia, getInstagramStories } from "@/lib/meta-api";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const days = Math.min(30, Math.max(7, parseInt(searchParams.get("days") ?? "30", 10)));
   try {
-    const [overview, topPosts, stories] = await Promise.all([
-      getInstagramOverview(),
-      getInstagramMedia(),
-      getInstagramStories(),
-    ]);
-
-    return NextResponse.json({ overview, topPosts, stories });
+    const [media, stories] = await Promise.all([getInstagramMedia(days), getInstagramStories()]);
+    const overview = await getInstagramOverview(days, media);
+    return NextResponse.json({ overview, topPosts: media, stories, days });
   } catch (error) {
     const message =
       error instanceof Error

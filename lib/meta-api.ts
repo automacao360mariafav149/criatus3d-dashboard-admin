@@ -44,6 +44,7 @@ export interface InstagramMediaItem extends InstagramPost {
   mediaType: string;
   saves: number;
   shares: number;
+  plays: number;
 }
 
 export interface InstagramStory {
@@ -126,12 +127,6 @@ function getFirstMetricValueMap(items: JsonObject[], metricName: string): Record
   return first.value as Record<string, number>;
 }
 
-function sumMetricValues(metricItems: JsonObject[], metricName: string): number {
-  return normalizeArray<JsonObject>(
-    metricItems.find((item) => item.name === metricName)?.values,
-  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
-}
-
 function parseDemographicsBreakdown(
   data: JsonObject[],
   metricName: string,
@@ -160,18 +155,85 @@ function parseDemographicsBreakdown(
   });
 }
 
-export async function getInstagramOverview(): Promise<InstagramOverview> {
-  const sinceLastWeek = getDateDaysAgo(7);
-  const since30Days = getDateDaysAgo(30);
-  const untilToday = new Date().toISOString().split("T")[0];
+async function fetchMediaInsights(mediaId: string, mediaType: string): Promise<{ plays: number; shares: number; saved: number }> {
+  try {
+    const metric = mediaType === "VIDEO" ? "plays,shares,saved" : "shares,saved";
+    const data = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=${metric}`);
+    const items = normalizeArray<JsonObject>((data as JsonObject).data);
+    const getVal = (name: string) => {
+      const item = items.find((x) => x.name === name);
+      if (!item) return 0;
+      const firstVal = normalizeArray<JsonObject>(item.values)[0];
+      return Number(firstVal?.value ?? item.value ?? 0);
+    };
+    return { plays: getVal("plays"), shares: getVal("shares"), saved: getVal("saved") };
+  } catch {
+    return { plays: 0, shares: 0, saved: 0 };
+  }
+}
 
-  const metricsParam =
-    "reach,follower_count,views,total_interactions,likes,comments,shares,saves,website_clicks,profile_views,accounts_engaged,follows_and_unfollows";
+export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]> {
+  const postsData = await metaFetch<JsonObject>(
+    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type&limit=50`,
+  );
+
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const allPosts = normalizeArray<JsonObject>(postsData.data).filter((post) => {
+    const ts = post.timestamp ? new Date(String(post.timestamp)) : null;
+    return ts && ts >= since;
+  });
+
+  const recentPosts = allPosts.slice(0, 20);
+
+  const insightsResults = await Promise.all(
+    recentPosts.map((post) =>
+      fetchMediaInsights(String(post.id ?? ""), String(post.media_type ?? "IMAGE")),
+    ),
+  );
+
+  const posts = recentPosts.map((post, i) => {
+    const likes = Number(post.like_count ?? 0);
+    const comments = Number(post.comments_count ?? 0);
+    const { plays, shares, saved } = insightsResults[i];
+    const interactions = likes + comments + shares + saved;
+    const engagementRate = interactions > 0 ? Number((interactions / 100).toFixed(2)) : 0;
+
+    return {
+      id: String(post.id ?? ""),
+      caption: String(post.caption ?? "Sem legenda"),
+      permalink: String(post.permalink ?? "#"),
+      mediaUrl: post.media_url ? String(post.media_url) : null,
+      thumbnailUrl: post.thumbnail_url ? String(post.thumbnail_url) : null,
+      timestamp: String(post.timestamp ?? ""),
+      likes,
+      comments,
+      engagementRate,
+      mediaType: String(post.media_type ?? "IMAGE"),
+      saves: saved,
+      shares,
+      plays,
+    };
+  });
+
+  return posts.sort((a, b) => b.engagementRate - a.engagementRate);
+}
+
+// Keep old name as alias for backward compatibility
+export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
+  return getInstagramMedia();
+}
+
+export async function getInstagramOverview(days = 30, cachedMedia?: InstagramMediaItem[]): Promise<InstagramOverview> {
+  const sinceLastWeek = getDateDaysAgo(7);
+  const sincePeriod = getDateDaysAgo(days);
+  const untilToday = new Date().toISOString().split("T")[0];
 
   const [profileData, metricsData, onlineData, demoCityData, demoAgeGenderData] = await Promise.all([
     metaFetch<JsonObject>(`/me?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=${metricsParam}&period=day&since=${since30Days}&until=${untilToday}`,
+      `/me/insights?metric=reach,follower_count&period=day&since=${sincePeriod}&until=${untilToday}`,
     ),
     metaFetch<JsonObject>(`/me/insights?metric=online_followers&period=lifetime`),
     metaFetch<JsonObject>(
@@ -197,18 +259,23 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     ) || followers;
 
   const followersWeeklyDelta = followers - weekAgoFollowers;
+  const reach30d = normalizeArray<JsonObject>(
+    metricItems.find((item) => item.name === "reach")?.values,
+  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
 
-  const reach30d = sumMetricValues(metricItems, "reach");
-  const views30d = sumMetricValues(metricItems, "views");
-  const totalInteractions30d = sumMetricValues(metricItems, "total_interactions");
-  const likes30d = sumMetricValues(metricItems, "likes");
-  const comments30d = sumMetricValues(metricItems, "comments");
-  const shares30d = sumMetricValues(metricItems, "shares");
-  const saves30d = sumMetricValues(metricItems, "saves");
-  const websiteClicks30d = sumMetricValues(metricItems, "website_clicks");
-  const profileViews30d = sumMetricValues(metricItems, "profile_views");
-  const accountsEngaged30d = sumMetricValues(metricItems, "accounts_engaged");
-  const followsAndUnfollows30d = sumMetricValues(metricItems, "follows_and_unfollows");
+  // Use cached media or fetch fresh
+  const mediaItems = cachedMedia ?? await getInstagramMedia(days);
+
+  const views30d = mediaItems
+    .filter((p) => p.mediaType === "VIDEO")
+    .reduce((sum, p) => sum + p.plays, 0);
+
+  const likes30d = mediaItems.reduce((sum, p) => sum + p.likes, 0);
+  const comments30d = mediaItems.reduce((sum, p) => sum + p.comments, 0);
+  const totalInteractions30d = mediaItems.reduce(
+    (sum, p) => sum + p.likes + p.comments + p.shares + p.saves,
+    0,
+  );
 
   const onlineItems = normalizeArray<JsonObject>(onlineData.data);
   const onlineFollowersMap = getFirstMetricValueMap(onlineItems, "online_followers");
@@ -244,14 +311,14 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     impressions30d: 0,
     views30d,
     totalInteractions30d,
-    websiteClicks30d,
-    profileViews30d,
-    accountsEngaged30d,
+    websiteClicks30d: 0,
+    profileViews30d: 0,
+    accountsEngaged30d: 0,
     likes30d,
     comments30d,
-    shares30d,
-    saves30d,
-    followsAndUnfollows30d,
+    shares30d: 0,
+    saves30d: 0,
+    followsAndUnfollows30d: 0,
     bestPostingHours,
     demographics: {
       cityFocus,
@@ -259,41 +326,6 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
       genders,
     },
   };
-}
-
-export async function getInstagramMedia(): Promise<InstagramMediaItem[]> {
-  const postsData = await metaFetch<JsonObject>(
-    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type&limit=30`,
-  );
-
-  const posts = normalizeArray<JsonObject>(postsData.data).map((post) => {
-    const likes = Number(post.like_count ?? 0);
-    const comments = Number(post.comments_count ?? 0);
-    const interactions = likes + comments;
-    const engagementRate = interactions > 0 ? Number((interactions / 100).toFixed(2)) : 0;
-
-    return {
-      id: String(post.id ?? ""),
-      caption: String(post.caption ?? "Sem legenda"),
-      permalink: String(post.permalink ?? "#"),
-      mediaUrl: post.media_url ? String(post.media_url) : null,
-      thumbnailUrl: post.thumbnail_url ? String(post.thumbnail_url) : null,
-      timestamp: String(post.timestamp ?? ""),
-      likes,
-      comments,
-      engagementRate,
-      mediaType: String(post.media_type ?? "IMAGE"),
-      saves: 0,
-      shares: 0,
-    };
-  });
-
-  return posts.sort((a, b) => b.engagementRate - a.engagementRate);
-}
-
-// Keep old name as alias for backward compatibility
-export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
-  return getInstagramMedia();
 }
 
 export async function getInstagramStories(): Promise<InstagramStory[]> {
