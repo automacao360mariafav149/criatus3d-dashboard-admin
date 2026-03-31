@@ -12,6 +12,18 @@ function unauthorizedResponse() {
   });
 }
 
+function decodeBasicAuth(value: string): string {
+  if (typeof atob === "function") {
+    return atob(value);
+  }
+
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(value, "base64").toString("utf-8");
+  }
+
+  return "";
+}
+
 export function proxy(request: NextRequest) {
   const isDashboardPath =
     request.nextUrl.pathname.startsWith("/dashboard") ||
@@ -31,8 +43,14 @@ export function proxy(request: NextRequest) {
   }
 
   const encodedPart = authHeader.split(" ")[1];
-  const decoded = atob(encodedPart);
-  const [username, password] = decoded.split(":");
+  const decoded = decodeBasicAuth(encodedPart);
+  const separatorIndex = decoded.indexOf(":");
+  if (separatorIndex < 0) {
+    return unauthorizedResponse();
+  }
+
+  const username = decoded.slice(0, separatorIndex);
+  const password = decoded.slice(separatorIndex + 1);
 
   if (username !== AUTH_USER || password !== AUTH_PASS) {
     return unauthorizedResponse();
