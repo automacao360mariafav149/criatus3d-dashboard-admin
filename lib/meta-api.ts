@@ -106,14 +106,12 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
   const since30Days = getDateDaysAgo(30);
   const untilToday = new Date().toISOString().split("T")[0];
 
-  const [profileData, metricsData, audienceData] = await Promise.all([
+  const [profileData, metricsData, onlineData] = await Promise.all([
     metaFetch<JsonObject>(`/me?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=reach,impressions,follower_count&period=day&since=${since30Days}&until=${untilToday}`,
+      `/me/insights?metric=reach,follower_count&period=day&since=${since30Days}&until=${untilToday}`,
     ),
-    metaFetch<JsonObject>(
-      `/me/insights?metric=audience_city,audience_gender_age,audience_online_followers&period=lifetime`,
-    ),
+    metaFetch<JsonObject>(`/me/insights?metric=online_followers&period=lifetime`),
   ]);
 
   const followers = Number(profileData.followers_count ?? 0);
@@ -136,42 +134,8 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     metricItems.find((item) => item.name === "reach")?.values,
   ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
 
-  const impressions30d = normalizeArray<JsonObject>(
-    metricItems.find((item) => item.name === "impressions")?.values,
-  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
-
-  const audienceItems = normalizeArray<JsonObject>(audienceData.data);
-  const cityMap = getFirstMetricValueMap(audienceItems, "audience_city");
-  const ageGenderMap = getFirstMetricValueMap(audienceItems, "audience_gender_age");
-  const onlineFollowersMap = getFirstMetricValueMap(audienceItems, "audience_online_followers");
-
-  const cityFocus = Object.entries(cityMap)
-    .sort((a, b) => b[1] - a[1])
-    .filter(([city]) =>
-      ["belo horizonte", "contagem", "betim", "ribeirao das neves"].some((target) =>
-        city.toLowerCase().includes(target),
-      ),
-    )
-    .slice(0, 6)
-    .map(([city, audience]) => ({ city, audience }));
-
-  const ageRanges = Object.entries(ageGenderMap).reduce(
-    (acc, [key, audience]) => {
-      const ageRange = key.split(".")[1] ?? "desconhecido";
-      acc[ageRange] = (acc[ageRange] ?? 0) + audience;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const genders = Object.entries(ageGenderMap).reduce(
-    (acc, [key, audience]) => {
-      const gender = key.split(".")[0] ?? "u";
-      acc[gender] = (acc[gender] ?? 0) + audience;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
+  const onlineItems = normalizeArray<JsonObject>(onlineData.data);
+  const onlineFollowersMap = getFirstMetricValueMap(onlineItems, "online_followers");
 
   const bestPostingHours = Object.entries(onlineFollowersMap)
     .sort((a, b) => b[1] - a[1])
@@ -182,12 +146,12 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     followers,
     followersWeeklyDelta,
     reach30d,
-    impressions30d,
+    impressions30d: 0,
     bestPostingHours,
     demographics: {
-      cityFocus,
-      ageRanges: Object.entries(ageRanges).map(([range, audience]) => ({ range, audience })),
-      genders: Object.entries(genders).map(([gender, audience]) => ({ gender, audience })),
+      cityFocus: [],
+      ageRanges: [],
+      genders: [],
     },
   };
 }
