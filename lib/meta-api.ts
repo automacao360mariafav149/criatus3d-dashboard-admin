@@ -10,6 +10,8 @@ export interface InstagramOverview {
   followersWeeklyDelta: number;
   reach30d: number;
   impressions30d: number;
+  views30d: number;
+  totalInteractions30d: number;
   bestPostingHours: string[];
   demographics: {
     cityFocus: Array<{ city: string; audience: number }>;
@@ -23,6 +25,7 @@ export interface InstagramPost {
   caption: string;
   permalink: string;
   mediaUrl: string | null;
+  thumbnailUrl: string | null;
   timestamp: string;
   likes: number;
   comments: number;
@@ -109,7 +112,7 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
   const [profileData, metricsData, onlineData] = await Promise.all([
     metaFetch<JsonObject>(`/me?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=reach,follower_count&period=day&since=${since30Days}&until=${untilToday}`,
+      `/me/insights?metric=reach,follower_count,views,total_interactions&period=day&since=${since30Days}&until=${untilToday}`,
     ),
     metaFetch<JsonObject>(`/me/insights?metric=online_followers&period=lifetime`),
   ]);
@@ -134,6 +137,14 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     metricItems.find((item) => item.name === "reach")?.values,
   ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
 
+  const views30d = normalizeArray<JsonObject>(
+    metricItems.find((item) => item.name === "views")?.values,
+  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
+
+  const totalInteractions30d = normalizeArray<JsonObject>(
+    metricItems.find((item) => item.name === "total_interactions")?.values,
+  ).reduce((sum, item) => sum + Number(item.value ?? 0), 0);
+
   const onlineItems = normalizeArray<JsonObject>(onlineData.data);
   const onlineFollowersMap = getFirstMetricValueMap(onlineItems, "online_followers");
 
@@ -147,6 +158,8 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
     followersWeeklyDelta,
     reach30d,
     impressions30d: 0,
+    views30d,
+    totalInteractions30d,
     bestPostingHours,
     demographics: {
       cityFocus: [],
@@ -158,7 +171,7 @@ export async function getInstagramOverview(): Promise<InstagramOverview> {
 
 export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
   const postsData = await metaFetch<JsonObject>(
-    `/me/media?fields=id,caption,media_url,permalink,timestamp,like_count,comments_count&limit=30`,
+    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count&limit=30`,
   );
 
   const posts = normalizeArray<JsonObject>(postsData.data).map((post) => {
@@ -172,6 +185,7 @@ export async function getTopInstagramPosts(): Promise<InstagramPost[]> {
       caption: String(post.caption ?? "Sem legenda"),
       permalink: String(post.permalink ?? "#"),
       mediaUrl: post.media_url ? String(post.media_url) : null,
+      thumbnailUrl: post.thumbnail_url ? String(post.thumbnail_url) : null,
       timestamp: String(post.timestamp ?? ""),
       likes,
       comments,

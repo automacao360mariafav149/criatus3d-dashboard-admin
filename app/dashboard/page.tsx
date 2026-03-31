@@ -75,14 +75,15 @@ export default function DashboardPage() {
 
       {overview ? (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <MetricCard
               title="Seguidores"
               value={formatNumber(overview.followers)}
               subtitle={`Variacao semanal: ${overview.followersWeeklyDelta >= 0 ? "+" : ""}${formatNumber(overview.followersWeeklyDelta)}`}
             />
             <MetricCard title="Alcance 30 dias" value={formatNumber(overview.reach30d)} />
-            <MetricCard title="Impressoes 30 dias" value={formatNumber(overview.impressions30d)} />
+            <MetricCard title="Visualizacoes 30 dias" value={formatNumber(overview.views30d)} />
+            <MetricCard title="Interacoes 30 dias" value={formatNumber(overview.totalInteractions30d)} />
             <MetricCard
               title="Melhores horarios"
               value={overview.bestPostingHours.join(" | ") || "Sem dados"}

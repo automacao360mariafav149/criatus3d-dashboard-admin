@@ -18,10 +18,10 @@ export function TopPosts({ posts }: TopPostsProps) {
             className="group overflow-hidden rounded-xl border border-white/10 bg-black/20 transition hover:border-fuchsia-300/50"
           >
             <div className="aspect-square w-full overflow-hidden bg-black/30">
-              {post.mediaUrl ? (
+              {(post.thumbnailUrl ?? post.mediaUrl) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={post.mediaUrl}
+                  src={(post.thumbnailUrl ?? post.mediaUrl)!}
                   alt="Post Instagram"
                   className="h-full w-full object-cover transition group-hover:scale-105"
                 />
