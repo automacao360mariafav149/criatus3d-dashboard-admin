@@ -1,4 +1,5 @@
-const META_GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
+const INSTAGRAM_API_BASE_URL = "https://graph.instagram.com/v23.0";
+const META_ADS_BASE_URL = "https://graph.facebook.com/v23.0";
 
 type JsonObject = Record<string, unknown>;
 
@@ -52,9 +53,9 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-async function metaFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function metaFetch<T>(path: string, init?: RequestInit, baseUrl = INSTAGRAM_API_BASE_URL): Promise<T> {
   const token = getRequiredEnv("INSTAGRAM_TOKEN");
-  const url = new URL(`${META_GRAPH_BASE_URL}${path}`);
+  const url = new URL(`${baseUrl}${path}`);
 
   const response = await fetch(url.toString(), {
     ...init,
@@ -224,6 +225,8 @@ export async function listAdsCampaigns(): Promise<AdsCampaign[]> {
 
   const campaignsData = await metaFetch<JsonObject>(
     `/${adAccountId}/campaigns?fields=id,name,status&limit=50`,
+    undefined,
+    META_ADS_BASE_URL,
   );
 
   const campaigns = normalizeArray<JsonObject>(campaignsData.data);
@@ -235,6 +238,8 @@ export async function listAdsCampaigns(): Promise<AdsCampaign[]> {
     const campaignId = String(campaign.id ?? "");
     const insightsData = await metaFetch<JsonObject>(
       `/${campaignId}/insights?fields=spend,reach,cpm,cpc&date_preset=last_30d`,
+      undefined,
+      META_ADS_BASE_URL,
     );
     const firstInsight = normalizeArray<JsonObject>(insightsData.data)[0] ?? {};
 
@@ -259,7 +264,7 @@ export async function toggleCampaignStatus(
   await metaFetch<JsonObject>(`/${campaignId}`, {
     method: "POST",
     body: JSON.stringify({ status }),
-  });
+  }, META_ADS_BASE_URL);
 }
 
 interface CreateCampaignInput {
@@ -292,7 +297,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<string
   const response = await metaFetch<JsonObject>(`/${adAccountId}/campaigns`, {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, META_ADS_BASE_URL);
 
   return String(response.id ?? "");
 }
