@@ -3,7 +3,7 @@ const META_ADS_BASE_URL = "https://graph.facebook.com/v23.0";
 
 type JsonObject = Record<string, unknown>;
 
-type MetaCampaignStatus = "ACTIVE" | "PAUSED";
+type MetaCampaignStatus = "ACTIVE" | "PAUSED" | "DELETED" | "ARCHIVED" | "IN_PROCESS" | "WITH_ISSUES" | "CAMPAIGN_PAUSED" | "PENDING_REVIEW" | "DISAPPROVED" | "PREAPPROVED";
 
 export interface InstagramOverview {
   followers: number;
@@ -59,15 +59,34 @@ export interface AdsCampaign {
   id: string;
   name: string;
   status: MetaCampaignStatus | string;
+  effectiveStatus: string;
   objective: string;
+  spend: number;
+  reach: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpm: number;
+  cpc: number;
+  frequency: number;
+  startTime: string;
+  stopTime: string;
+  dailyBudget: number;
+  lifetimeBudget: number;
+}
+
+export interface CampaignDailyInsight {
+  date: string;
   spend: number;
   reach: number;
   impressions: number;
   clicks: number;
   cpm: number;
   cpc: number;
-  startTime: string;
-  stopTime: string;
+}
+
+export interface CampaignDetails extends AdsCampaign {
+  dailyInsights: CampaignDailyInsight[];
 }
 
 interface MetaError {
@@ -356,7 +375,7 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
   const adAccountId = getRequiredEnv("META_AD_ACCOUNT_ID");
 
   const campaignsData = await metaFetch<JsonObject>(
-    `/${adAccountId}/campaigns?fields=id,name,status,objective,start_time,stop_time&limit=100`,
+    `/${adAccountId}/campaigns?fields=id,name,status,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget&limit=100`,
     undefined,
     META_ADS_BASE_URL,
   );
@@ -369,7 +388,7 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
   const insightsPromises = campaigns.map(async (campaign) => {
     const campaignId = String(campaign.id ?? "");
     const insightsData = await metaFetch<JsonObject>(
-      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,cpm,cpc&date_preset=${datePreset}`,
+      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&date_preset=${datePreset}`,
       undefined,
       META_ADS_BASE_URL,
     ).catch(() => ({ data: [] } as JsonObject));
@@ -379,19 +398,76 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
       id: campaignId,
       name: String(campaign.name ?? "Campanha sem nome"),
       status: String(campaign.status ?? "PAUSED"),
+      effectiveStatus: String(campaign.effective_status ?? campaign.status ?? "PAUSED"),
       objective: String(campaign.objective ?? ""),
       spend: Number(firstInsight.spend ?? 0),
       reach: Number(firstInsight.reach ?? 0),
       impressions: Number(firstInsight.impressions ?? 0),
       clicks: Number(firstInsight.clicks ?? 0),
+      ctr: Number(firstInsight.ctr ?? 0),
       cpm: Number(firstInsight.cpm ?? 0),
       cpc: Number(firstInsight.cpc ?? 0),
+      frequency: Number(firstInsight.frequency ?? 0),
       startTime: String(campaign.start_time ?? ""),
       stopTime: String(campaign.stop_time ?? ""),
+      dailyBudget: Number(campaign.daily_budget ?? 0) / 100,
+      lifetimeBudget: Number(campaign.lifetime_budget ?? 0) / 100,
     };
   });
 
   return Promise.all(insightsPromises);
+}
+
+export async function getCampaignDetails(campaignId: string): Promise<CampaignDetails> {
+  const [campaignData, insightsData, dailyData] = await Promise.all([
+    metaFetch<JsonObject>(
+      `/${campaignId}?fields=id,name,status,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget`,
+      undefined,
+      META_ADS_BASE_URL,
+    ),
+    metaFetch<JsonObject>(
+      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&date_preset=lifetime`,
+      undefined,
+      META_ADS_BASE_URL,
+    ).catch(() => ({ data: [] } as JsonObject)),
+    metaFetch<JsonObject>(
+      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,cpm,cpc&time_increment=1&date_preset=last_30d`,
+      undefined,
+      META_ADS_BASE_URL,
+    ).catch(() => ({ data: [] } as JsonObject)),
+  ]);
+
+  const insight = normalizeArray<JsonObject>(insightsData.data)[0] ?? {};
+  const daily = normalizeArray<JsonObject>(dailyData.data).map((d) => ({
+    date: String(d.date_start ?? ""),
+    spend: Number(d.spend ?? 0),
+    reach: Number(d.reach ?? 0),
+    impressions: Number(d.impressions ?? 0),
+    clicks: Number(d.clicks ?? 0),
+    cpm: Number(d.cpm ?? 0),
+    cpc: Number(d.cpc ?? 0),
+  }));
+
+  return {
+    id: campaignId,
+    name: String(campaignData.name ?? ""),
+    status: String(campaignData.status ?? ""),
+    effectiveStatus: String(campaignData.effective_status ?? ""),
+    objective: String(campaignData.objective ?? ""),
+    spend: Number(insight.spend ?? 0),
+    reach: Number(insight.reach ?? 0),
+    impressions: Number(insight.impressions ?? 0),
+    clicks: Number(insight.clicks ?? 0),
+    ctr: Number(insight.ctr ?? 0),
+    cpm: Number(insight.cpm ?? 0),
+    cpc: Number(insight.cpc ?? 0),
+    frequency: Number(insight.frequency ?? 0),
+    startTime: String(campaignData.start_time ?? ""),
+    stopTime: String(campaignData.stop_time ?? ""),
+    dailyBudget: Number(campaignData.daily_budget ?? 0) / 100,
+    lifetimeBudget: Number(campaignData.lifetime_budget ?? 0) / 100,
+    dailyInsights: daily,
+  };
 }
 
 export async function toggleCampaignStatus(

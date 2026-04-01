@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { AdsCampaign } from "@/lib/meta-api";
 
 interface CampaignTableProps {
@@ -30,6 +31,11 @@ const STATUS_STYLES: Record<string, string> = {
   DELETED: "bg-rose-500/20 text-rose-300",
   COMPLETED: "bg-blue-500/20 text-blue-300",
   WITH_ISSUES: "bg-orange-500/20 text-orange-300",
+  IN_PROCESS: "bg-blue-500/20 text-blue-300",
+  CAMPAIGN_PAUSED: "bg-yellow-500/20 text-yellow-300",
+  PENDING_REVIEW: "bg-blue-500/20 text-blue-300",
+  DISAPPROVED: "bg-rose-500/20 text-rose-300",
+  PREAPPROVED: "bg-teal-500/20 text-teal-300",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -37,9 +43,13 @@ const STATUS_LABELS: Record<string, string> = {
   PAUSED: "Pausada",
   ARCHIVED: "Arquivada",
   DELETED: "Deletada",
-  COMPLETED: "Concluida",
+  COMPLETED: "Concluída",
   WITH_ISSUES: "Com problemas",
-  IN_PROCESS: "Processando",
+  IN_PROCESS: "Em processamento",
+  CAMPAIGN_PAUSED: "Pausada (conta)",
+  PENDING_REVIEW: "Em revisão",
+  DISAPPROVED: "Reprovada",
+  PREAPPROVED: "Pré-aprovada",
 };
 
 export function CampaignTable({ campaigns, onToggle, loadingId }: CampaignTableProps) {
@@ -102,15 +112,20 @@ export function CampaignTable({ campaigns, onToggle, loadingId }: CampaignTableP
             </thead>
             <tbody>
               {campaigns.map((campaign) => {
-                const isActive = campaign.status === "ACTIVE";
+                const displayStatus = campaign.effectiveStatus || campaign.status;
+                const isActive = displayStatus === "ACTIVE";
                 const isLoading = loadingId === campaign.id;
                 const canToggle = campaign.status === "ACTIVE" || campaign.status === "PAUSED";
-                const statusStyle = STATUS_STYLES[campaign.status] ?? "bg-white/10 text-muted";
-                const statusLabel = STATUS_LABELS[campaign.status] ?? campaign.status;
+                const statusStyle = STATUS_STYLES[displayStatus] ?? "bg-white/10 text-muted";
+                const statusLabel = STATUS_LABELS[displayStatus] ?? displayStatus;
 
                 return (
                   <tr key={campaign.id} className="border-t border-white/10 text-white hover:bg-white/5">
-                    <td className="py-3 pr-4 font-medium">{campaign.name}</td>
+                    <td className="py-3 pr-4 font-medium">
+                      <Link href={`/dashboard/campanhas/${campaign.id}`} className="hover:text-accent transition">
+                        {campaign.name}
+                      </Link>
+                    </td>
                     <td className="py-3 pr-4">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusStyle}`}>
                         {statusLabel}
@@ -131,10 +146,10 @@ export function CampaignTable({ campaigns, onToggle, loadingId }: CampaignTableP
                         <button
                           type="button"
                           disabled={isLoading}
-                          onClick={() => onToggle(campaign.id, isActive)}
+                          onClick={() => onToggle(campaign.id, campaign.status === "ACTIVE")}
                           className="rounded-lg bg-accent px-3 py-1 text-xs font-semibold text-white transition hover:bg-accent-soft disabled:opacity-60"
                         >
-                          {isLoading ? "..." : isActive ? "Pausar" : "Ativar"}
+                          {isLoading ? "..." : campaign.status === "ACTIVE" ? "Pausar" : "Ativar"}
                         </button>
                       ) : (
                         <span className="text-xs text-muted">—</span>
