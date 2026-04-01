@@ -80,7 +80,9 @@ function getRequiredEnv(name: string): string {
 }
 
 async function metaFetch<T>(path: string, init?: RequestInit, baseUrl = INSTAGRAM_API_BASE_URL): Promise<T> {
-  const token = getRequiredEnv("INSTAGRAM_TOKEN");
+  const token = baseUrl === META_ADS_BASE_URL
+    ? getRequiredEnv("META_ADS_TOKEN")
+    : getRequiredEnv("INSTAGRAM_TOKEN");
   const url = new URL(`${baseUrl}${path}`);
 
   const response = await fetch(url.toString(), {
