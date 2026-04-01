@@ -54,11 +54,14 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-white">Dashboard de Campanhas Meta</h1>
         </div>
         <div className="flex gap-2">
-          <Link href="/dashboard/instagram" className="rounded-lg border border-white/20 px-3 py-2 text-sm">
+          <Link href="/dashboard/instagram" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
             Instagram
           </Link>
-          <Link href="/dashboard/campanhas" className="rounded-lg border border-white/20 px-3 py-2 text-sm">
+          <Link href="/dashboard/campanhas" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
             Campanhas
+          </Link>
+          <Link href="/dashboard/agente" className="rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/20 transition">
+            🤖 Agente IA
           </Link>
           <button
             type="button"
