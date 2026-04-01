@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const campaignId = await createCampaign({
       name: String(body.name ?? ""),
-      objective: body.objective === "FOLLOWERS" ? "FOLLOWERS" : "BRAND_AWARENESS",
+      objective: String(body.objective ?? "OUTCOME_ENGAGEMENT"),
       dailyBudget: Number(body.dailyBudget ?? 0),
       startDate: String(body.startDate ?? ""),
       endDate: String(body.endDate ?? ""),

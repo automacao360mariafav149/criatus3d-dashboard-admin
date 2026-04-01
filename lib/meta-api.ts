@@ -406,7 +406,7 @@ export async function toggleCampaignStatus(
 
 interface CreateCampaignInput {
   name: string;
-  objective: "FOLLOWERS" | "BRAND_AWARENESS";
+  objective: string;
   dailyBudget: number;
   startDate: string;
   endDate: string;

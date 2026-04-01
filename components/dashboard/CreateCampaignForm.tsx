@@ -12,7 +12,7 @@ const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function CreateCampaignForm({ onCreated }: CreateCampaignFormProps) {
   const [name, setName] = useState("");
-  const [objective, setObjective] = useState<"FOLLOWERS" | "BRAND_AWARENESS">("FOLLOWERS");
+  const [objective, setObjective] = useState("OUTCOME_ENGAGEMENT");
   const [dailyBudget, setDailyBudget] = useState(30);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -69,13 +69,14 @@ export function CreateCampaignForm({ onCreated }: CreateCampaignFormProps) {
         />
         <select
           value={objective}
-          onChange={(event) =>
-            setObjective(event.target.value === "FOLLOWERS" ? "FOLLOWERS" : "BRAND_AWARENESS")
-          }
+          onChange={(event) => setObjective(event.target.value)}
           className="rounded-lg border border-white/15 bg-black/20 p-2 text-sm text-white"
         >
-          <option value="FOLLOWERS">Seguidores</option>
-          <option value="BRAND_AWARENESS">Reconhecimento</option>
+          <option value="OUTCOME_ENGAGEMENT">Engajamento</option>
+          <option value="OUTCOME_AWARENESS">Reconhecimento</option>
+          <option value="OUTCOME_TRAFFIC">Trafego</option>
+          <option value="OUTCOME_LEADS">Leads</option>
+          <option value="OUTCOME_SALES">Vendas</option>
         </select>
         <input
           required
