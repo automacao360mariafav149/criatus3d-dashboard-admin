@@ -1,5 +1,6 @@
-const INSTAGRAM_API_BASE_URL = "https://graph.instagram.com/v23.0";
-const META_ADS_BASE_URL = "https://graph.facebook.com/v23.0";
+// Both Instagram and Ads use graph.facebook.com — Instagram with EAA* tokens
+const INSTAGRAM_API_BASE_URL = "https://graph.facebook.com/v23.0";
+const META_ADS_BASE_URL = "https://graph.facebook.com/v23.0"; // kept for reference, token selection now uses boolean flag
 
 type JsonObject = Record<string, unknown>;
 
@@ -103,11 +104,11 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-async function metaFetch<T>(path: string, init?: RequestInit, baseUrl = INSTAGRAM_API_BASE_URL): Promise<T> {
-  const token = baseUrl === META_ADS_BASE_URL
+async function metaFetch<T>(path: string, init?: RequestInit, useAdsToken = false): Promise<T> {
+  const token = useAdsToken
     ? getRequiredEnv("META_ADS_TOKEN")
     : getRequiredEnv("INSTAGRAM_TOKEN");
-  const url = new URL(`${baseUrl}${path}`);
+  const url = new URL(`${INSTAGRAM_API_BASE_URL}${path}`);
 
   const response = await fetch(url.toString(), {
     ...init,
@@ -236,8 +237,9 @@ async function fetchMediaInsights(
 }
 
 export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]> {
+  const igId = getRequiredEnv("INSTAGRAM_ACCOUNT_ID");
   const postsData = await metaFetch<JsonObject>(
-    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type,media_product_type&limit=50`,
+    `/${igId}/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type,media_product_type&limit=50`,
   );
 
   const since = new Date();
@@ -297,17 +299,18 @@ export async function getInstagramOverview(days = 30, cachedMedia?: InstagramMed
   const sincePeriod = getDateDaysAgo(days);
   const untilToday = new Date().toISOString().split("T")[0];
 
+  const igId = getRequiredEnv("INSTAGRAM_ACCOUNT_ID");
   const [profileData, metricsData, onlineData, demoCityData, demoAgeGenderData] = await Promise.all([
-    metaFetch<JsonObject>(`/me?fields=followers_count`),
+    metaFetch<JsonObject>(`/${igId}?fields=followers_count`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=reach,follower_count&period=day&since=${sincePeriod}&until=${untilToday}`,
+      `/${igId}/insights?metric=reach,follower_count&period=day&since=${sincePeriod}&until=${untilToday}`,
     ),
-    metaFetch<JsonObject>(`/me/insights?metric=online_followers&period=lifetime`),
+    metaFetch<JsonObject>(`/${igId}/insights?metric=online_followers&period=lifetime`),
     metaFetch<JsonObject>(
-      `/me/insights?metric=follower_demographics&period=lifetime&breakdown=city`,
+      `/${igId}/insights?metric=follower_demographics&period=lifetime&breakdown=city`,
     ).catch(() => ({ data: [] } as JsonObject)),
     metaFetch<JsonObject>(
-      `/me/insights?metric=follower_demographics&period=lifetime&breakdown=age,gender`,
+      `/${igId}/insights?metric=follower_demographics&period=lifetime&breakdown=age,gender`,
     ).catch(() => ({ data: [] } as JsonObject)),
   ]);
 
@@ -397,8 +400,9 @@ export async function getInstagramOverview(days = 30, cachedMedia?: InstagramMed
 
 export async function getInstagramStories(): Promise<InstagramStory[]> {
   try {
+    const igId = getRequiredEnv("INSTAGRAM_ACCOUNT_ID");
     const storiesData = await metaFetch<JsonObject>(
-      `/me/stories?fields=id,media_url,thumbnail_url,timestamp,media_type`,
+      `/${igId}/stories?fields=id,media_url,thumbnail_url,timestamp,media_type`,
     );
     return normalizeArray<JsonObject>(storiesData.data).map((story) => ({
       id: String(story.id ?? ""),
@@ -418,7 +422,7 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
   const campaignsData = await metaFetch<JsonObject>(
     `/${adAccountId}/campaigns?fields=id,name,status,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget&limit=100`,
     undefined,
-    META_ADS_BASE_URL,
+    true,
   );
 
   const campaigns = normalizeArray<JsonObject>(campaignsData.data);
@@ -431,7 +435,7 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
     const insightsData = await metaFetch<JsonObject>(
       `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&date_preset=${datePreset}`,
       undefined,
-      META_ADS_BASE_URL,
+      true,
     ).catch(() => ({ data: [] } as JsonObject));
     const firstInsight = normalizeArray<JsonObject>(insightsData.data)[0] ?? {};
 
@@ -464,12 +468,12 @@ export async function getCampaignDetails(campaignId: string): Promise<CampaignDe
     metaFetch<JsonObject>(
       `/${campaignId}?fields=id,name,status,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget`,
       undefined,
-      META_ADS_BASE_URL,
+      true,
     ),
     metaFetch<JsonObject>(
       `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&time_increment=1&date_preset=last_90d`,
       undefined,
-      META_ADS_BASE_URL,
+      true,
     ).catch(() => ({ data: [] } as JsonObject)),
   ]);
 
@@ -522,7 +526,7 @@ export async function toggleCampaignStatus(
   await metaFetch<JsonObject>(`/${campaignId}`, {
     method: "POST",
     body: JSON.stringify({ status }),
-  }, META_ADS_BASE_URL);
+  }, true);
 }
 
 interface CreateCampaignInput {
@@ -555,7 +559,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<string
   const response = await metaFetch<JsonObject>(`/${adAccountId}/campaigns`, {
     method: "POST",
     body: JSON.stringify(payload),
-  }, META_ADS_BASE_URL);
+  }, true);
 
   return String(response.id ?? "");
 }
