@@ -181,18 +181,57 @@ function parseDemographicsBreakdown(
   });
 }
 
+/** Extracts a numeric value from an insight item handling both API response formats:
+ *  - New format: { total_value: number | { value: number } }
+ *  - Old format: { values: [{ value: number }] }
+ */
+function extractInsightValue(item: JsonObject): number {
+  // New format: total_value as plain number
+  if (typeof item.total_value === "number") return item.total_value;
+  // New format: total_value as object
+  if (item.total_value && typeof item.total_value === "object") {
+    const tv = item.total_value as JsonObject;
+    if (typeof tv.value === "number") return tv.value;
+  }
+  // Old format: values array
+  const firstVal = normalizeArray<JsonObject>(item.values)[0];
+  return Number(firstVal?.value ?? item.value ?? 0);
+}
+
 async function fetchMediaInsights(mediaId: string, mediaType: string): Promise<{ plays: number; shares: number; saved: number }> {
   try {
-    const metric = mediaType === "VIDEO" ? "plays,shares,saved" : "shares,saved";
-    const data = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=${metric}`);
-    const items = normalizeArray<JsonObject>((data as JsonObject).data);
-    const getVal = (name: string) => {
-      const item = items.find((x) => x.name === name);
-      if (!item) return 0;
-      const firstVal = normalizeArray<JsonObject>(item.values)[0];
-      return Number(firstVal?.value ?? item.value ?? 0);
+    // Fetch shares and saved for all media types
+    const baseData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=shares,saved`);
+    const baseItems = normalizeArray<JsonObject>((baseData as JsonObject).data);
+    const getBase = (name: string) => {
+      const item = baseItems.find((x) => x.name === name);
+      return item ? extractInsightValue(item) : 0;
     };
-    return { plays: getVal("plays"), shares: getVal("shares"), saved: getVal("saved") };
+
+    let plays = 0;
+    if (mediaType === "VIDEO" || mediaType === "REELS") {
+      // Try `plays` (Reels) first, fall back to `video_views` (standard video)
+      try {
+        const playsData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=plays`);
+        const playsItems = normalizeArray<JsonObject>((playsData as JsonObject).data);
+        const playsItem = playsItems.find((x) => x.name === "plays");
+        plays = playsItem ? extractInsightValue(playsItem) : 0;
+      } catch {
+        // plays not available for this media type
+      }
+      if (plays === 0) {
+        try {
+          const vvData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=video_views`);
+          const vvItems = normalizeArray<JsonObject>((vvData as JsonObject).data);
+          const vvItem = vvItems.find((x) => x.name === "video_views");
+          plays = vvItem ? extractInsightValue(vvItem) : 0;
+        } catch {
+          // video_views also not available
+        }
+      }
+    }
+
+    return { plays, shares: getBase("shares"), saved: getBase("saved") };
   } catch {
     return { plays: 0, shares: 0, saved: 0 };
   }
@@ -200,7 +239,7 @@ async function fetchMediaInsights(mediaId: string, mediaType: string): Promise<{
 
 export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]> {
   const postsData = await metaFetch<JsonObject>(
-    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type&limit=50`,
+    `/me/media?fields=id,caption,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count,media_type,media_product_type&limit=50`,
   );
 
   const since = new Date();
@@ -215,7 +254,11 @@ export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]
 
   const insightsResults = await Promise.all(
     recentPosts.map((post) =>
-      fetchMediaInsights(String(post.id ?? ""), String(post.media_type ?? "IMAGE")),
+      fetchMediaInsights(
+        String(post.id ?? ""),
+        // media_product_type REELS is more reliable than media_type for detecting reels
+        String(post.media_product_type ?? post.media_type ?? "IMAGE"),
+      ),
     ),
   );
 
