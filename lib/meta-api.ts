@@ -199,42 +199,36 @@ function extractInsightValue(item: JsonObject): number {
 }
 
 async function fetchMediaInsights(mediaId: string, mediaType: string): Promise<{ plays: number; shares: number; saved: number }> {
-  try {
-    // Fetch shares and saved for all media types
-    const baseData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=shares,saved`);
-    const baseItems = normalizeArray<JsonObject>((baseData as JsonObject).data);
-    const getBase = (name: string) => {
-      const item = baseItems.find((x) => x.name === name);
+  const isReel = mediaType === "REELS";
+  const isVideo = mediaType === "VIDEO" || isReel;
+
+  // Helper to fetch a single metric safely
+  async function fetchMetric(metric: string): Promise<number> {
+    try {
+      const data = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=${metric}`);
+      const items = normalizeArray<JsonObject>((data as JsonObject).data);
+      const item = items.find((x) => x.name === metric);
       return item ? extractInsightValue(item) : 0;
-    };
-
-    let plays = 0;
-    if (mediaType === "VIDEO" || mediaType === "REELS") {
-      // Try `plays` (Reels) first, fall back to `video_views` (standard video)
-      try {
-        const playsData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=plays`);
-        const playsItems = normalizeArray<JsonObject>((playsData as JsonObject).data);
-        const playsItem = playsItems.find((x) => x.name === "plays");
-        plays = playsItem ? extractInsightValue(playsItem) : 0;
-      } catch {
-        // plays not available for this media type
-      }
-      if (plays === 0) {
-        try {
-          const vvData = await metaFetch<JsonObject>(`/${mediaId}/insights?metric=video_views`);
-          const vvItems = normalizeArray<JsonObject>((vvData as JsonObject).data);
-          const vvItem = vvItems.find((x) => x.name === "video_views");
-          plays = vvItem ? extractInsightValue(vvItem) : 0;
-        } catch {
-          // video_views also not available
-        }
-      }
+    } catch {
+      return 0;
     }
-
-    return { plays, shares: getBase("shares"), saved: getBase("saved") };
-  } catch {
-    return { plays: 0, shares: 0, saved: 0 };
   }
+
+  // saved: available for all media types
+  const saved = await fetchMetric("saved");
+
+  // shares: only available for Reels
+  const shares = isReel ? await fetchMetric("shares") : 0;
+
+  // plays / video_views: only for videos
+  let plays = 0;
+  if (isVideo) {
+    // plays = Reels; video_views = standard video — try both
+    plays = await fetchMetric("plays");
+    if (plays === 0) plays = await fetchMetric("video_views");
+  }
+
+  return { plays, shares, saved };
 }
 
 export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]> {
