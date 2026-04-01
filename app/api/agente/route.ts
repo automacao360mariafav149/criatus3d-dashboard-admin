@@ -1,5 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
+import {
+  getInstagramMedia,
+  getInstagramOverview,
+  getInstagramStories,
+  listAdsCampaigns,
+} from "@/lib/meta-api";
 
 const SYSTEM_PROMPT = `Você é o Agente de Marketing Digital da Criatus 3D — uma empresa brasileira de impressão 3D localizada em Contagem e Belo Horizonte, Minas Gerais.
 
@@ -113,17 +119,21 @@ async function scrapeInstagramAccounts(usernames: string[], postsPerAccount = 10
 
 // ─── Tool execution ───────────────────────────────────────────────────────────
 
-async function executeCustomTool(name: string, input: ToolInput, baseUrl: string): Promise<unknown> {
+async function executeCustomTool(name: string, input: ToolInput): Promise<unknown> {
   if (name === "get_instagram_data") {
     const days = input.days ?? 30;
-    const res = await fetch(`${baseUrl}/api/instagram?days=${days}`, { cache: "no-store" });
-    return res.json();
+    const media = await getInstagramMedia(days);
+    const [overview, stories] = await Promise.all([
+      getInstagramOverview(days, media),
+      getInstagramStories(),
+    ]);
+    return { overview, recentPosts: media, stories };
   }
 
   if (name === "get_campaigns_data") {
     const period = input.period ?? "last_30d";
-    const res = await fetch(`${baseUrl}/api/campaigns?period=${period}`, { cache: "no-store" });
-    return res.json();
+    const campaigns = await listAdsCampaigns(period);
+    return { campaigns, period };
   }
 
   if (name === "research_instagram_accounts") {
@@ -147,6 +157,7 @@ async function executeCustomTool(name: string, input: ToolInput, baseUrl: string
 
   return { error: "Ferramenta não encontrada" };
 }
+
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
@@ -238,7 +249,6 @@ export async function POST(request: NextRequest) {
   }
 
   const messages = body.messages ?? [];
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -284,7 +294,6 @@ export async function POST(request: NextRequest) {
               const result = await executeCustomTool(
                 toolUse.name,
                 toolUse.input as ToolInput,
-                baseUrl,
               );
               toolResults.push({
                 type: "tool_result",
