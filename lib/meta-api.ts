@@ -198,9 +198,13 @@ function extractInsightValue(item: JsonObject): number {
   return Number(firstVal?.value ?? item.value ?? 0);
 }
 
-async function fetchMediaInsights(mediaId: string, mediaType: string): Promise<{ plays: number; shares: number; saved: number }> {
-  const isReel = mediaType === "REELS";
-  const isVideo = mediaType === "VIDEO" || isReel;
+async function fetchMediaInsights(
+  mediaId: string,
+  mediaType: string,       // media_type: IMAGE | VIDEO | CAROUSEL_ALBUM
+  productType: string,     // media_product_type: FEED | REELS | STORY | AD
+): Promise<{ plays: number; shares: number; saved: number }> {
+  const isReel = productType === "REELS";
+  const isVideo = mediaType === "VIDEO" || isReel; // VIDEO covers both regular videos and reels
 
   // Helper to fetch a single metric safely
   async function fetchMetric(metric: string): Promise<number> {
@@ -250,8 +254,8 @@ export async function getInstagramMedia(days = 30): Promise<InstagramMediaItem[]
     recentPosts.map((post) =>
       fetchMediaInsights(
         String(post.id ?? ""),
-        // media_product_type REELS is more reliable than media_type for detecting reels
-        String(post.media_product_type ?? post.media_type ?? "IMAGE"),
+        String(post.media_type ?? "IMAGE"),
+        String(post.media_product_type ?? "FEED"),
       ),
     ),
   );
