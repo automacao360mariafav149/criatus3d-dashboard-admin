@@ -60,6 +60,9 @@ export default function DashboardPage() {
           <Link href="/dashboard/campanhas" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
             Campanhas
           </Link>
+          <Link href="/dashboard/historico" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
+            📋 Histórico
+          </Link>
           <Link href="/dashboard/agente" className="rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm font-semibold text-accent hover:bg-accent/20 transition">
             🤖 Agente IA
           </Link>

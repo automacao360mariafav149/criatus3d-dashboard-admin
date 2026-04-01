@@ -5,20 +5,12 @@ import { useEffect, useRef, useState } from "react";
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-interface ToolEvent {
-  name: string;
-  label: string;
-}
+interface ToolEvent { name: string; label: string }
+interface Message { role: "user" | "assistant"; text: string; tools?: ToolEvent[] }
+interface AgentConfig { accounts: string[]; apifyConfigured: boolean; memoryEntries: number }
 
-interface Message {
-  role: "user" | "assistant";
-  text: string;
-  tools?: ToolEvent[];
-}
-
-interface AgentConfig {
-  accounts: string[];
-  apifyConfigured: boolean;
+function genSessionId() {
+  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 const QUICK_PROMPTS = [
@@ -33,59 +25,32 @@ const QUICK_PROMPTS = [
 ];
 
 const TOOL_ICONS: Record<string, string> = {
-  get_instagram_data: "📊",
-  get_campaigns_data: "📣",
-  research_instagram_accounts: "🔎",
-  web_search: "🌐",
+  get_instagram_data: "📊", get_campaigns_data: "📣",
+  research_instagram_accounts: "🔎", web_search: "🌐", save_memory: "🧠",
 };
-
 const TOOL_LABELS_PT: Record<string, string> = {
-  get_instagram_data: "Dados do Instagram",
-  get_campaigns_data: "Campanhas Meta Ads",
-  research_instagram_accounts: "Pesquisa de contas",
-  web_search: "Pesquisa web",
+  get_instagram_data: "Dados do Instagram", get_campaigns_data: "Campanhas Meta Ads",
+  research_instagram_accounts: "Pesquisa de contas", web_search: "Pesquisa web", save_memory: "Memória salva",
 };
 
 function renderText(text: string): React.ReactNode[] {
   return text.split("\n").map((line, i) => {
-    if (/^###\s/.test(line)) {
-      return (
-        <p key={i} className="mt-4 mb-1 text-sm font-bold text-white">
-          {line.replace(/^###\s/, "")}
-        </p>
-      );
-    }
-    if (/^##\s/.test(line)) {
-      return (
-        <p key={i} className="mt-5 mb-1 text-base font-bold text-white">
-          {line.replace(/^##\s/, "")}
-        </p>
-      );
-    }
-    if (/^#\s/.test(line)) {
-      return (
-        <p key={i} className="mt-5 mb-2 text-lg font-bold text-white">
-          {line.replace(/^#\s/, "")}
-        </p>
-      );
-    }
-    if (/^[-*]\s/.test(line)) {
-      return (
-        <div key={i} className="flex gap-2">
-          <span className="mt-0.5 text-accent shrink-0">•</span>
-          <span>{renderInline(line.replace(/^[-*]\s/, ""))}</span>
-        </div>
-      );
-    }
+    if (/^###\s/.test(line)) return <p key={i} className="mt-4 mb-1 text-sm font-bold text-white">{line.replace(/^###\s/, "")}</p>;
+    if (/^##\s/.test(line)) return <p key={i} className="mt-5 mb-1 text-base font-bold text-white">{line.replace(/^##\s/, "")}</p>;
+    if (/^#\s/.test(line)) return <p key={i} className="mt-5 mb-2 text-lg font-bold text-white">{line.replace(/^#\s/, "")}</p>;
+    if (/^[-*]\s/.test(line)) return (
+      <div key={i} className="flex gap-2">
+        <span className="mt-0.5 text-accent shrink-0">•</span>
+        <span>{renderInline(line.replace(/^[-*]\s/, ""))}</span>
+      </div>
+    );
     const numMatch = line.match(/^(\d+)\.\s(.*)/);
-    if (numMatch) {
-      return (
-        <div key={i} className="flex gap-2">
-          <span className="mt-0.5 text-accent shrink-0 font-semibold">{numMatch[1]}.</span>
-          <span>{renderInline(numMatch[2])}</span>
-        </div>
-      );
-    }
+    if (numMatch) return (
+      <div key={i} className="flex gap-2">
+        <span className="mt-0.5 text-accent shrink-0 font-semibold">{numMatch[1]}.</span>
+        <span>{renderInline(numMatch[2])}</span>
+      </div>
+    );
     if (!line.trim()) return <div key={i} className="h-2" />;
     return <p key={i}>{renderInline(line)}</p>;
   });
@@ -93,17 +58,15 @@ function renderText(text: string): React.ReactNode[] {
 
 function renderInline(text: string): React.ReactNode {
   return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).map((part, i) => {
-    if (/^\*\*[^*]+\*\*$/.test(part))
-      return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
-    if (/^\*[^*]+\*$/.test(part))
-      return <em key={i} className="italic">{part.slice(1, -1)}</em>;
-    if (/^`[^`]+`$/.test(part))
-      return <code key={i} className="rounded bg-white/10 px-1 py-0.5 text-xs font-mono text-accent">{part.slice(1, -1)}</code>;
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
+    if (/^\*[^*]+\*$/.test(part)) return <em key={i} className="italic">{part.slice(1, -1)}</em>;
+    if (/^`[^`]+`$/.test(part)) return <code key={i} className="rounded bg-white/10 px-1 py-0.5 text-xs font-mono text-accent">{part.slice(1, -1)}</code>;
     return part;
   });
 }
 
 export default function AgentePage() {
+  const [sessionId] = useState(genSessionId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -115,9 +78,7 @@ export default function AgentePage() {
 
   useEffect(() => {
     fetch(`${BASE_PATH}/api/agente`)
-      .then((r) => r.json())
-      .then((d) => setConfig(d as AgentConfig))
-      .catch(() => null);
+      .then((r) => r.json()).then((d) => setConfig(d as AgentConfig)).catch(() => null);
   }, []);
 
   useEffect(() => {
@@ -127,14 +88,20 @@ export default function AgentePage() {
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
 
-    const userMessage: Message = { role: "user", text: text.trim() };
-    const newMessages = [...messages, userMessage];
+    const userMsg: Message = { role: "user", text: text.trim() };
+    const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
     setLoading(true);
     setActiveTools([]);
 
+    // Build API messages (all turns in this session)
     const apiMessages = newMessages.map((m) => ({ role: m.role, content: m.text }));
+    // Session messages for saving (includes tool info)
+    const sessionMessages = newMessages.map((m) => ({
+      role: m.role, text: m.text, tools: m.tools?.map((t) => t.name),
+    }));
+
     const collectedTools: ToolEvent[] = [];
     let responseText = "";
 
@@ -142,11 +109,10 @@ export default function AgentePage() {
       const res = await fetch(`${BASE_PATH}/api/agente`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({ messages: apiMessages, sessionId, sessionMessages }),
       });
 
       if (!res.body) throw new Error("Sem resposta do servidor.");
-
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -154,7 +120,6 @@ export default function AgentePage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
@@ -168,6 +133,10 @@ export default function AgentePage() {
             const tool: ToolEvent = { name: event.name ?? "", label: event.label ?? "" };
             collectedTools.push(tool);
             setActiveTools([...collectedTools]);
+            // Refresh memory count if agent saved something
+            if (event.name === "save_memory") {
+              fetch(`${BASE_PATH}/api/agente`).then((r) => r.json()).then((d) => setConfig(d as AgentConfig)).catch(() => null);
+            }
           } else if (event.type === "text") {
             responseText = event.text ?? "";
           } else if (event.type === "error") {
@@ -185,10 +154,7 @@ export default function AgentePage() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage(input);
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); }
   }
 
   function buildResearchPrompt() {
@@ -203,98 +169,81 @@ export default function AgentePage() {
         <div>
           <p className="text-xs uppercase tracking-widest text-muted">Criatus 3D</p>
           <h1 className="text-2xl font-bold text-white">Agente de Marketing</h1>
-          <p className="mt-1 text-sm text-muted">
-            Analisa dados reais, pesquisa concorrentes e sugere estratégias
-          </p>
+          <p className="mt-1 text-sm text-muted">Analisa dados reais, pesquisa concorrentes e aprende com cada conversa</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setShowConfig((v) => !v)}
-            className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition"
-          >
+        <div className="flex flex-wrap gap-2">
+          {/* Memory indicator */}
+          {config && config.memoryEntries > 0 && (
+            <span className="flex items-center gap-1 rounded-lg bg-accent/10 px-3 py-2 text-xs text-accent">
+              🧠 {config.memoryEntries} memórias
+            </span>
+          )}
+          <button type="button" onClick={() => setShowConfig((v) => !v)}
+            className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
             ⚙ Contas
           </button>
-          <Link href="/dashboard" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
+          <Link href="/dashboard/historico"
+            className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
+            📋 Histórico
+          </Link>
+          <Link href="/dashboard"
+            className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white transition">
             Voltar
           </Link>
         </div>
       </header>
 
-      {/* Config panel — reference accounts */}
+      {/* Config panel */}
       {showConfig && (
         <div className="mb-4 rounded-2xl border border-white/10 bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold text-white">Contas de Referência / Concorrentes</h2>
-
-          {/* Apify status */}
           <div className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${config?.apifyConfigured ? "bg-emerald-500/10 text-emerald-300" : "bg-yellow-500/10 text-yellow-300"}`}>
-            {config?.apifyConfigured ? "✓ Apify configurado — pesquisa de contas ativa" : "⚠ Adicione APIFY_TOKEN no EasyPanel para ativar pesquisa de contas"}
+            {config?.apifyConfigured ? "✓ Apify configurado — pesquisa ativa" : "⚠ Adicione APIFY_TOKEN no EasyPanel para ativar pesquisa de contas"}
           </div>
-
-          {/* Account list */}
           {config?.accounts.length ? (
             <div className="flex flex-wrap gap-2 mb-3">
               {config.accounts.map((acc) => (
-                <span key={acc} className="flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-xs text-accent">
-                  @{acc}
-                </span>
+                <span key={acc} className="rounded-full bg-accent/10 px-3 py-1 text-xs text-accent">@{acc}</span>
               ))}
             </div>
           ) : (
-            <p className="mb-3 text-xs text-muted">Nenhuma conta configurada. Adicione REFERENCE_ACCOUNTS no EasyPanel.</p>
+            <p className="mb-3 text-xs text-muted">Nenhuma conta configurada. Adicione <code className="text-accent">REFERENCE_ACCOUNTS=conta1,conta2</code> no EasyPanel.</p>
           )}
-
           <div className="flex gap-2">
-            <input
-              value={newAccount}
-              onChange={(e) => setNewAccount(e.target.value)}
+            <input value={newAccount} onChange={(e) => setNewAccount(e.target.value)}
               placeholder="@conta para pesquisar agora"
-              className="flex-1 rounded-lg border border-white/15 bg-black/20 px-3 py-1.5 text-sm text-white placeholder-muted outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                if (!newAccount.trim()) return;
-                const handle = newAccount.trim().replace(/^@/, "");
-                void sendMessage(`Pesquise o perfil @${handle} e sugira ideias de posts para a Criatus 3D`);
-                setNewAccount("");
-                setShowConfig(false);
-              }}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft transition"
-            >
+              className="flex-1 rounded-lg border border-white/15 bg-black/20 px-3 py-1.5 text-sm text-white placeholder-muted outline-none" />
+            <button type="button" onClick={() => {
+              if (!newAccount.trim()) return;
+              const handle = newAccount.trim().replace(/^@/, "");
+              void sendMessage(`Pesquise o perfil @${handle} e sugira ideias de posts para a Criatus 3D`);
+              setNewAccount(""); setShowConfig(false);
+            }} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft transition">
               Pesquisar
             </button>
           </div>
-          <p className="mt-2 text-xs text-muted">
-            Para contas permanentes: adicione <code className="text-accent">REFERENCE_ACCOUNTS=conta1,conta2,conta3</code> no EasyPanel → Ambiente
-          </p>
         </div>
       )}
 
-      {/* Chat area */}
+      {/* Chat */}
       <div className="flex flex-1 flex-col gap-4">
         {messages.length === 0 && !loading ? (
           <div className="flex flex-col items-center gap-6 py-8 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 text-4xl">
-              🤖
-            </div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/20 text-4xl">🤖</div>
             <div>
               <h2 className="text-lg font-semibold text-white">Como posso ajudar hoje?</h2>
               <p className="mt-1 text-sm text-muted max-w-md">
-                Analiso seu Instagram e Meta Ads com dados reais, pesquiso concorrentes via Apify e busco tendências na web.
+                Analiso dados reais do Instagram e Meta Ads, pesquiso concorrentes via Apify, busco tendências na web e <strong className="text-white">lembro de tudo que aprendo</strong> sobre a Criatus 3D.
               </p>
+              {config && config.memoryEntries > 0 && (
+                <p className="mt-2 text-xs text-accent">🧠 {config.memoryEntries} memórias acumuladas sobre seu negócio</p>
+              )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 w-full max-w-2xl">
               {QUICK_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => {
-                    const text = prompt.includes("referência") ? buildResearchPrompt() : prompt;
-                    void sendMessage(text);
-                  }}
-                  className="rounded-xl border border-white/10 bg-card p-3 text-left text-sm text-muted hover:border-accent/50 hover:text-white transition"
-                >
+                <button key={prompt} type="button"
+                  onClick={() => void sendMessage(prompt.includes("referência") ? buildResearchPrompt() : prompt)}
+                  className="rounded-xl border border-white/10 bg-card p-3 text-left text-sm text-muted hover:border-accent/50 hover:text-white transition">
                   {prompt}
                 </button>
               ))}
@@ -311,7 +260,7 @@ export default function AgentePage() {
                   {msg.role === "assistant" && msg.tools && msg.tools.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-1">
                       {msg.tools.map((t, ti) => (
-                        <span key={ti} className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent">
+                        <span key={ti} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${t.name === "save_memory" ? "bg-emerald-500/10 text-emerald-300" : "bg-accent/10 text-accent"}`}>
                           {TOOL_ICONS[t.name] ?? "🔧"} {TOOL_LABELS_PT[t.name] ?? t.name}
                         </span>
                       ))}
@@ -333,7 +282,7 @@ export default function AgentePage() {
                   {activeTools.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {activeTools.map((t, i) => (
-                        <span key={i} className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs text-accent animate-pulse">
+                        <span key={i} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs animate-pulse ${t.name === "save_memory" ? "bg-emerald-500/10 text-emerald-300" : "bg-accent/10 text-accent"}`}>
                           {TOOL_ICONS[t.name] ?? "🔧"} {t.label}
                         </span>
                       ))}
@@ -356,23 +305,14 @@ export default function AgentePage() {
 
       {/* Input */}
       <div className="sticky bottom-0 mt-4 rounded-2xl border border-white/10 bg-card p-3">
-        <textarea
-          rows={2}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={loading}
+        <textarea rows={2} value={input} onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown} disabled={loading}
           placeholder="Pergunte sobre Instagram, campanhas, concorrentes, tendências..."
-          className="w-full resize-none bg-transparent text-sm text-white placeholder-muted outline-none disabled:opacity-50"
-        />
+          className="w-full resize-none bg-transparent text-sm text-white placeholder-muted outline-none disabled:opacity-50" />
         <div className="mt-2 flex items-center justify-between">
           <p className="text-xs text-muted">Enter para enviar · Shift+Enter para nova linha</p>
-          <button
-            type="button"
-            disabled={loading || !input.trim()}
-            onClick={() => void sendMessage(input)}
-            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft disabled:opacity-40 transition"
-          >
+          <button type="button" disabled={loading || !input.trim()} onClick={() => void sendMessage(input)}
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent-soft disabled:opacity-40 transition">
             {loading ? "Pensando..." : "Enviar"}
           </button>
         </div>
