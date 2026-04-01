@@ -419,25 +419,19 @@ export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCamp
 }
 
 export async function getCampaignDetails(campaignId: string): Promise<CampaignDetails> {
-  const [campaignData, insightsData, dailyData] = await Promise.all([
+  const [campaignData, dailyData] = await Promise.all([
     metaFetch<JsonObject>(
       `/${campaignId}?fields=id,name,status,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget`,
       undefined,
       META_ADS_BASE_URL,
     ),
     metaFetch<JsonObject>(
-      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&date_preset=lifetime`,
-      undefined,
-      META_ADS_BASE_URL,
-    ).catch(() => ({ data: [] } as JsonObject)),
-    metaFetch<JsonObject>(
-      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,cpm,cpc&time_increment=1&date_preset=last_30d`,
+      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,ctr,cpm,cpc,frequency&time_increment=1&date_preset=last_90d`,
       undefined,
       META_ADS_BASE_URL,
     ).catch(() => ({ data: [] } as JsonObject)),
   ]);
 
-  const insight = normalizeArray<JsonObject>(insightsData.data)[0] ?? {};
   const daily = normalizeArray<JsonObject>(dailyData.data).map((d) => ({
     date: String(d.date_start ?? ""),
     spend: Number(d.spend ?? 0),
@@ -448,20 +442,30 @@ export async function getCampaignDetails(campaignId: string): Promise<CampaignDe
     cpc: Number(d.cpc ?? 0),
   }));
 
+  // Compute totals from daily data
+  const totalSpend = daily.reduce((s, d) => s + d.spend, 0);
+  const totalReach = daily.reduce((s, d) => s + d.reach, 0);
+  const totalImpressions = daily.reduce((s, d) => s + d.impressions, 0);
+  const totalClicks = daily.reduce((s, d) => s + d.clicks, 0);
+  const avgCpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+  const avgCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  const avgFrequency = totalReach > 0 ? totalImpressions / totalReach : 0;
+
   return {
     id: campaignId,
     name: String(campaignData.name ?? ""),
     status: String(campaignData.status ?? ""),
     effectiveStatus: String(campaignData.effective_status ?? ""),
     objective: String(campaignData.objective ?? ""),
-    spend: Number(insight.spend ?? 0),
-    reach: Number(insight.reach ?? 0),
-    impressions: Number(insight.impressions ?? 0),
-    clicks: Number(insight.clicks ?? 0),
-    ctr: Number(insight.ctr ?? 0),
-    cpm: Number(insight.cpm ?? 0),
-    cpc: Number(insight.cpc ?? 0),
-    frequency: Number(insight.frequency ?? 0),
+    spend: totalSpend,
+    reach: totalReach,
+    impressions: totalImpressions,
+    clicks: totalClicks,
+    ctr: avgCtr,
+    cpm: avgCpm,
+    cpc: avgCpc,
+    frequency: avgFrequency,
     startTime: String(campaignData.start_time ?? ""),
     stopTime: String(campaignData.stop_time ?? ""),
     dailyBudget: Number(campaignData.daily_budget ?? 0) / 100,

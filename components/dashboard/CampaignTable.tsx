@@ -29,7 +29,7 @@ const STATUS_STYLES: Record<string, string> = {
   PAUSED: "bg-yellow-500/20 text-yellow-300",
   ARCHIVED: "bg-white/10 text-muted",
   DELETED: "bg-rose-500/20 text-rose-300",
-  COMPLETED: "bg-blue-500/20 text-blue-300",
+  COMPLETED: "bg-slate-500/20 text-slate-300",
   WITH_ISSUES: "bg-orange-500/20 text-orange-300",
   IN_PROCESS: "bg-blue-500/20 text-blue-300",
   CAMPAIGN_PAUSED: "bg-yellow-500/20 text-yellow-300",
