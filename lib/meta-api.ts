@@ -355,9 +355,8 @@ export async function getInstagramStories(): Promise<InstagramStory[]> {
 export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCampaign[]> {
   const adAccountId = getRequiredEnv("META_AD_ACCOUNT_ID");
 
-  const statuses = encodeURIComponent(JSON.stringify(["ACTIVE","PAUSED","ARCHIVED","DELETED","IN_PROCESS","WITH_ISSUES","CAMPAIGN_PAUSED","ADSET_PAUSED"]));
   const campaignsData = await metaFetch<JsonObject>(
-    `/${adAccountId}/campaigns?fields=id,name,status,objective,start_time,stop_time&limit=100&effective_status=${statuses}`,
+    `/${adAccountId}/campaigns?fields=id,name,status,objective,start_time,stop_time&limit=100`,
     undefined,
     META_ADS_BASE_URL,
   );
