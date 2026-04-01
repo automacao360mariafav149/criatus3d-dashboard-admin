@@ -59,10 +59,15 @@ export interface AdsCampaign {
   id: string;
   name: string;
   status: MetaCampaignStatus | string;
+  objective: string;
   spend: number;
   reach: number;
+  impressions: number;
+  clicks: number;
   cpm: number;
   cpc: number;
+  startTime: string;
+  stopTime: string;
 }
 
 interface MetaError {
@@ -347,11 +352,11 @@ export async function getInstagramStories(): Promise<InstagramStory[]> {
   }
 }
 
-export async function listAdsCampaigns(): Promise<AdsCampaign[]> {
+export async function listAdsCampaigns(datePreset = "last_30d"): Promise<AdsCampaign[]> {
   const adAccountId = getRequiredEnv("META_AD_ACCOUNT_ID");
 
   const campaignsData = await metaFetch<JsonObject>(
-    `/${adAccountId}/campaigns?fields=id,name,status&limit=50`,
+    `/${adAccountId}/campaigns?fields=id,name,status,objective,start_time,stop_time&limit=100&effective_status=["ACTIVE","PAUSED","ARCHIVED","DELETED","COMPLETED","IN_PROCESS","WITH_ISSUES"]`,
     undefined,
     META_ADS_BASE_URL,
   );
@@ -364,20 +369,25 @@ export async function listAdsCampaigns(): Promise<AdsCampaign[]> {
   const insightsPromises = campaigns.map(async (campaign) => {
     const campaignId = String(campaign.id ?? "");
     const insightsData = await metaFetch<JsonObject>(
-      `/${campaignId}/insights?fields=spend,reach,cpm,cpc&date_preset=last_30d`,
+      `/${campaignId}/insights?fields=spend,reach,impressions,clicks,cpm,cpc&date_preset=${datePreset}`,
       undefined,
       META_ADS_BASE_URL,
-    );
+    ).catch(() => ({ data: [] } as JsonObject));
     const firstInsight = normalizeArray<JsonObject>(insightsData.data)[0] ?? {};
 
     return {
       id: campaignId,
       name: String(campaign.name ?? "Campanha sem nome"),
       status: String(campaign.status ?? "PAUSED"),
+      objective: String(campaign.objective ?? ""),
       spend: Number(firstInsight.spend ?? 0),
       reach: Number(firstInsight.reach ?? 0),
+      impressions: Number(firstInsight.impressions ?? 0),
+      clicks: Number(firstInsight.clicks ?? 0),
       cpm: Number(firstInsight.cpm ?? 0),
       cpc: Number(firstInsight.cpc ?? 0),
+      startTime: String(campaign.start_time ?? ""),
+      stopTime: String(campaign.stop_time ?? ""),
     };
   });
 

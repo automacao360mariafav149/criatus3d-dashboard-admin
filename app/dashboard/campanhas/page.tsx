@@ -13,17 +13,26 @@ interface CampaignsApiResponse {
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
+const PERIOD_OPTIONS = [
+  { label: "7 dias", value: "last_7d" },
+  { label: "14 dias", value: "last_14d" },
+  { label: "30 dias", value: "last_30d" },
+  { label: "90 dias", value: "last_90d" },
+  { label: "Tudo", value: "lifetime" },
+];
+
 export default function CampanhasPage() {
   const [campaigns, setCampaigns] = useState<AdsCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [period, setPeriod] = useState("last_30d");
 
-  const loadCampaigns = useCallback(async () => {
+  const loadCampaigns = useCallback(async (p: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${BASE_PATH}/api/campaigns`, { cache: "no-store" });
+      const response = await fetch(`${BASE_PATH}/api/campaigns?period=${p}`, { cache: "no-store" });
       const data = (await response.json()) as CampaignsApiResponse;
       if (!response.ok) {
         throw new Error(data.error ?? "Nao foi possivel carregar campanhas.");
@@ -37,8 +46,8 @@ export default function CampanhasPage() {
   }, []);
 
   useEffect(() => {
-    void loadCampaigns();
-  }, [loadCampaigns]);
+    void loadCampaigns(period);
+  }, [loadCampaigns, period]);
 
   async function handleToggle(campaignId: string, active: boolean) {
     setLoadingId(campaignId);
@@ -52,7 +61,7 @@ export default function CampanhasPage() {
       if (!response.ok) {
         throw new Error(data.error ?? "Falha ao atualizar status.");
       }
-      await loadCampaigns();
+      await loadCampaigns(period);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao atualizar campanha.");
     } finally {
@@ -67,12 +76,26 @@ export default function CampanhasPage() {
           <p className="text-xs uppercase tracking-widest text-muted">Gestao de anuncios</p>
           <h1 className="text-2xl font-bold text-white">Campanhas Meta Ads</h1>
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard" className="rounded-lg border border-white/20 px-3 py-2 text-sm">
+        <div className="flex flex-wrap gap-2">
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setPeriod(opt.value)}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                period === opt.value
+                  ? "border-accent bg-accent text-white"
+                  : "border-white/20 text-muted hover:text-white"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <Link href="/dashboard" className="rounded-lg border border-white/20 px-3 py-2 text-sm text-muted hover:text-white">
             Voltar
           </Link>
           <button
-            onClick={() => void loadCampaigns()}
+            onClick={() => void loadCampaigns(period)}
             className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-soft"
             type="button"
           >
@@ -85,7 +108,7 @@ export default function CampanhasPage() {
       {error ? <p className="rounded-lg bg-rose-900/20 p-3 text-sm text-rose-300">{error}</p> : null}
 
       <CampaignTable campaigns={campaigns} onToggle={handleToggle} loadingId={loadingId} />
-      <CreateCampaignForm onCreated={loadCampaigns} />
+      <CreateCampaignForm onCreated={() => loadCampaigns(period)} />
     </main>
   );
 }

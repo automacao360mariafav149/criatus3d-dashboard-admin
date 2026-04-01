@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCampaign, listAdsCampaigns, toggleCampaignStatus } from "@/lib/meta-api";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const campaigns = await listAdsCampaigns();
-    return NextResponse.json({ campaigns });
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get("period") ?? "last_30d";
+    const allowed = ["last_7d", "last_14d", "last_30d", "last_90d", "lifetime"];
+    const datePreset = allowed.includes(period) ? period : "last_30d";
+    const campaigns = await listAdsCampaigns(datePreset);
+    return NextResponse.json({ campaigns, period: datePreset });
   } catch (error) {
     const message =
       error instanceof Error
